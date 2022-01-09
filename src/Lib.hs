@@ -1,4 +1,4 @@
-module Lib (readExpr) where
+module Lib where
 
 import           Control.Monad
 import           GHC.IO.Device                 (IODevice (dup))
@@ -10,6 +10,20 @@ data LispVal = Atom String
     | Number Integer
     | String String
     | Bool Bool
+
+unwordsList :: [LispVal] -> String
+unwordsList = unwords . map showVal
+
+showVal :: LispVal -> String
+showVal (Atom name) = name
+showVal (List contents) = "(" ++ unwordsList contents ++ ")"
+showVal (DottedList head tail) = "(" ++ unwordsList head ++ "." ++ showVal tail ++ ")"
+showVal (Number num) = show num
+showVal (String str) = "\"" ++ str ++ "\""
+showVal (Bool True) = "#t"
+showVal (Bool False) = "#f"
+
+instance Show LispVal where show = showVal
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
@@ -65,9 +79,5 @@ parseExpr = parseAtom
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
-    Left err  -> "No match" ++ show err
-    Right val -> case val of
-        Atom str   -> "Atom " ++ str
-        Number int -> "Number " ++ show int
-        String str -> "String " ++ str
-        _          -> "other"
+    Left err  -> "No match " ++ show err
+    Right val -> "Found " ++ show val
