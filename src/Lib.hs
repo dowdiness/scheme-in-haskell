@@ -1,59 +1,11 @@
 module Lib where
 
 import           Control.Exception             (throw)
-import           Control.Monad
 import           Control.Monad.Except
-import           GHC.IO.Device                 (IODevice (dup))
+import           Core
 import           Text.ParserCombinators.Parsec hiding (spaces)
-
-data LispVal = Atom String
-    | List [LispVal]
-    | DottedList [LispVal] LispVal
-    | Number Integer
-    | String String
-    | Bool Bool
-
-data LispError = NumArgs Integer [LispVal]
-    | TypeMismatch String LispVal
-    | Parser ParseError
-    | BadSpecialForm String LispVal
-    | NotFunction String String
-    | UnboundVal String String
-    | Default String
-
-unwordsList :: [LispVal] -> String
-unwordsList = unwords . map showVal
-
-showVal :: LispVal -> String
-showVal (Atom name) = name
-showVal (Number num) = show num
-showVal (String str) = "\"" ++ str ++ "\""
-showVal (Bool True) = "#t"
-showVal (Bool False) = "#f"
-showVal (List contents) = "(" ++ unwordsList contents ++ ")"
-showVal (DottedList head tail) = "(" ++ unwordsList head ++ "." ++ showVal tail ++ ")"
-
-
-instance Show LispVal where show = showVal
-
-showError :: LispError -> String
-showError (UnboundVal message varname) = message ++ ":" ++ varname
-showError (BadSpecialForm message form) = message ++ ": " ++ show form
-showError (NotFunction message func) = message ++ ":" ++ func
-showError (NumArgs expected found)      = "Expected " ++ show expected ++ " args; found values " ++ unwordsList found
-showError (TypeMismatch expected found) = "Invalid type: expected " ++ expected ++ ", found " ++ show found
-showError (Parser parseErr)             = "Parse error at " ++ show parseErr
-showError (Default str) = "Default" ++ str
-
-instance Show LispError where show = showError
-
-type ThrowsError = Either LispError
-
-trapError :: (MonadError a m, Show a) => m String -> m String
-trapError action = catchError action (return . show)
-
-extractValue :: ThrowsError a -> a
-extractValue (Right val) = val
+import           Variables                     (defineVar, getVar, liftThrows,
+                                                setVar)
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
@@ -112,18 +64,21 @@ readExpr input = case parse parseExpr "lisp" input of
     Left err  -> throwError $ Parser err
     Right val -> return val
 
-eval :: LispVal -> ThrowsError LispVal
-eval val@(String _)             = return val
-eval val@(Number _)             = return val
-eval val@(Bool _)               = return val
-eval (List [Atom "quote", val]) = return val
-eval (List [Atom "if", pred, conseq, alt]) = do
-    result <- eval pred
+eval :: Env -> LispVal -> IOThrowsError LispVal
+eval env val@(String _)             = return val
+eval env val@(Number _)             = return val
+eval env val@(Bool _)               = return val
+eval env (Atom id) = getVar env id
+eval env (List [Atom "quote", val]) = return val
+eval env (List [Atom "if", pred, conseq, alt]) = do
+    result <- eval env pred
     case result of
-        Bool False -> eval alt
-        _          -> eval conseq
-eval (List (Atom func : args))  = mapM eval args >>= apply func
-eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
+        Bool False -> eval env alt
+        _          -> eval env conseq
+eval env (List [Atom "set!", Atom var, form]) = eval env form >>= setVar env var
+eval env (List [Atom "define", Atom var, form]) = eval env form >>= defineVar env var
+eval env (List (Atom func : args))  = mapM (eval env) args >>= liftThrows . apply func
+eval env badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
 
 apply :: String -> [LispVal] -> ThrowsError LispVal
 apply func args = maybe (throwError $ NotFunction "Unrecognized primitive function args" func)
@@ -153,7 +108,8 @@ primitives = [("+", numericBinop (+)),
     ("string>=?", strBoolBinop (>=)),
     ("car", car),
     ("cdr", cdr),
-    ("cons", cons)]
+    ("cons", cons),
+    ("eqv?", eqv)]
 
 unpackNum :: LispVal -> ThrowsError Integer
 unpackNum (Number n) = return n
@@ -214,3 +170,8 @@ cons [x1, List x2]            = return $ List $ x1:x2
 cons [x, DottedList xs xlast] = return $ DottedList (x:xs) xlast
 cons [x1, x2]                 = return $ DottedList [x1] x2
 cons badArgList               = throwError $ NumArgs 2 badArgList
+
+-- TODO 正しいか分からない
+eqv :: [LispVal] -> ThrowsError LispVal
+eqv xs = return $ Bool (and (zipWith (==) ys (tail ys)))
+    where ys = map show xs
