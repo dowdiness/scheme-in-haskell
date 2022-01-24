@@ -1,7 +1,7 @@
 module Repl where
 
 import           Core      (Env, extractValue, nullEnv, trapError)
-import           Lib       (eval, readExpr)
+import           Lib       (eval, primitiveBindings, readExpr)
 import           System.IO (hFlush, stdout)
 import           Variables (liftThrows, runIOThrows)
 
@@ -18,7 +18,7 @@ evalAndPrint :: Env -> String -> IO ()
 evalAndPrint env expr = evalString env expr >>= putStrLn
 
 runOne :: String -> IO ()
-runOne expr = nullEnv >>= flip evalAndPrint expr
+runOne expr = primitiveBindings >>= flip evalAndPrint expr
 
 until_ :: Monad m => (a -> Bool) -> m a -> (a -> m ()) -> m ()
 until_ pred prompt action = do
@@ -28,4 +28,4 @@ until_ pred prompt action = do
     else action result >> until_ pred prompt action
 
 runRepl :: IO ()
-runRepl = nullEnv >>= until_ (== "quit") (readPrompt ">> ") . evalAndPrint
+runRepl = primitiveBindings >>= until_ (== "quit") (readPrompt ">> ") . evalAndPrint
