@@ -2,7 +2,13 @@
 
 Scheme written in haskell based on [Write Yourself a Scheme in 48 hours](https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours)
 
-Only implemented by chapter 4
+Only implemented by chapter 8
+
+## TODO
+
+- [ ] IO Primitives and File I/O
+- [ ] Standard Library for Scheme
+- [ ] Configuration to load Standard Library
 
 ## Usage
 
