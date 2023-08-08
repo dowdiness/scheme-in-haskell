@@ -1,7 +1,7 @@
 module Repl where
 
 import           Core      (Env, extractValue, nullEnv, trapError)
-import           Lib       (eval, primitiveBindings, readExpr)
+import           Parser       (eval, primitiveBindings, readExpr)
 import           System.IO (hFlush, stdout)
 import           Variables (liftThrows, runIOThrows)
 

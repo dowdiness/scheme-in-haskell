@@ -1,4 +1,4 @@
-module Lib where
+module Parser where
 
 import           Control.Exception             (throw)
 import           Control.Monad.Except
