@@ -4,6 +4,7 @@ import           Control.Monad.Except          (ExceptT,
                                                 MonadError (catchError))
 import           Data.IORef                    (IORef, newIORef)
 import           Text.ParserCombinators.Parsec (ParseError)
+import           System.IO
 
 data LispVal = Atom String
     | List [LispVal]
@@ -18,6 +19,8 @@ data LispVal = Atom String
     , body    :: [LispVal]
     , closure :: Env
     }
+    | IOFunc ([LispVal] -> IOThrowsError LispVal)
+    | Port Handle
 
 data LispError = NumArgs Integer [LispVal]
     | TypeMismatch String LispVal
@@ -44,6 +47,8 @@ showVal Func {params = args, varang = varangs, body = body, closure = env} =
         (case varangs of
             Nothing  -> ""
             Just arg -> " ." ++ arg) ++ ") ...)"
+showVal (IOFunc _) = "<IO primitive>"
+showVal (Port _) = "<IO port>"
 
 
 instance Show LispVal where show = showVal
@@ -66,7 +71,6 @@ trapError action = catchError action (return . show)
 
 extractValue :: ThrowsError a -> a
 extractValue (Right val) = val
-
 
 type Env = IORef [(String, IORef LispVal)]
 

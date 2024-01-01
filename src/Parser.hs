@@ -7,6 +7,7 @@ import           Data.Maybe                    (isNothing)
 import           Text.ParserCombinators.Parsec hiding (spaces)
 import           Variables                     (bindVars, defineVar, getVar,
                                                 liftThrows, setVar)
+import           System.IO
 
 symbol :: Parser Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
@@ -60,10 +61,16 @@ parseExpr = parseAtom
         char ')'
         return x
 
-readExpr :: String -> ThrowsError LispVal
-readExpr input = case parse parseExpr "lisp" input of
+readOrThrow :: Parser a -> String -> ThrowsError a
+readOrThrow parser input = case parse parser "lisp" input of
     Left err  -> throwError $ Parser err
     Right val -> return val
+
+readExpr :: String -> ThrowsError LispVal
+readExpr = readOrThrow parseExpr
+
+readExprList :: String -> ThrowsError [LispVal]
+readExprList = readOrThrow (endBy parseExpr spaces)
 
 makeFunc :: Maybe String -> Env -> [LispVal] -> [LispVal] -> IOThrowsError LispVal
 makeFunc varargs env params body = return $ Func (map showVal params) varargs body env
@@ -94,6 +101,8 @@ eval env (List (Atom "define" : DottedList (Atom var : params) varargs : body)) 
 eval env (List (Atom "lambda" : List params : body)) = makeNormalFunc env params body
 eval env (List (Atom "lambda" : DottedList params varargs : body)) = makeVarArgs varargs env params body
 eval env (List (Atom "lambda" : varargs@(Atom _) : body)) = makeVarArgs varargs env [] body
+eval env (List [Atom "load", String filename]) =
+    load filename >>= fmap last . mapM (eval env)
 eval env (List (function : args)) = do
     func <- eval env function
     argVals <- mapM (eval env) args
@@ -109,16 +118,28 @@ apply (Func params varargs body closure) args =
     where
         remainingArgs = drop (length params) args
         num = toInteger . length
-        evalBody env = liftM last $ mapM (eval env) body
+        evalBody env = last <$> mapM (eval env) body
         bindVarArgs arg env = case arg of
             Just argName -> liftIO $ bindVars env [(argName, List remainingArgs)]
             Nothing -> return env
-apply any _ = throwError $ TypeMismatch "Only match PrimitiveFunc or Func" any
+apply (IOFunc func) args = func args
+apply any _ = throwError $ TypeMismatch "Only match PrimitiveFunc, IOFunc or Func" any
 
 
 primitiveBindings :: IO Env
-primitiveBindings = nullEnv >>= flip bindVars (map makePrimitiveFunc primitives)
-    where makePrimitiveFunc (var, func) = (var, PrimitiveFunc func)
+primitiveBindings = nullEnv >>= flip bindVars (map (makeFunc IOFunc) ioPrimitives ++ map (makeFunc PrimitiveFunc) primitives)
+    where makeFunc constructor (var, func) = (var, constructor func)
+
+ioPrimitives :: [(String, [LispVal] -> IOThrowsError LispVal)]
+ioPrimitives = [("apply", applyProc),
+    ("open-input-file", makePort ReadMode),
+    ("open-output-file", makePort WriteMode),
+    ("close-input-port", closePort),
+    ("close-output-port", closePort),
+    ("read", readProc),
+    ("write", writeProc),
+    ("read-contents", readContents),
+    ("read-all", readAll)]
 
 primitives :: [(String, [LispVal] -> ThrowsError LispVal)]
 primitives = [("+", numericBinop (+)),
@@ -164,6 +185,35 @@ unpackStr notStr     = throwError $ TypeMismatch "string" notStr
 unpackBool :: LispVal -> ThrowsError Bool
 unpackBool (Bool b) = return b
 unpackBool notBool  = throwError  $ TypeMismatch "bool" notBool
+
+
+applyProc :: [LispVal] -> IOThrowsError LispVal
+applyProc [func, List args] = apply func args
+applyProc (func : args)     = apply func args
+
+makePort :: IOMode -> [LispVal] -> IOThrowsError LispVal
+makePort mode [String filename] = fmap Port $ liftIO $ openFile filename mode
+
+closePort :: [LispVal] -> IOThrowsError LispVal
+closePort [Port port] = liftIO $ hClose port >> return (Bool True)
+closePort _ = return (Bool False)
+
+readProc :: [LispVal] -> IOThrowsError LispVal
+readProc [] = readProc [Port stdin]
+readProc [Port port] = liftIO (hGetLine port) >>= liftThrows . readExpr
+
+writeProc :: [LispVal] -> IOThrowsError LispVal
+writeProc [obj] = writeProc [obj, Port stdout]
+writeProc [obj, Port port] = liftIO (hPrint port obj) >> return (Bool True)
+
+readContents :: [LispVal] -> IOThrowsError LispVal
+readContents [String filename] = String <$> liftIO (readFile filename)
+
+load :: String -> IOThrowsError [LispVal]
+load filename = liftIO (readFile filename) >>= liftThrows . readExprList
+
+readAll :: [LispVal] -> IOThrowsError LispVal
+readAll [String filename] = List <$> load filename
 
 boolBinop :: (LispVal -> ThrowsError a) -> (a -> a -> Bool) -> [LispVal] -> ThrowsError LispVal
 boolBinop unpacker op args = if length args /= 2
