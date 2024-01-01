@@ -24,6 +24,8 @@ dependencies:
 - parsec
 - mtl
 
+language: GHC2021
+
 library:
   source-dirs: src
 

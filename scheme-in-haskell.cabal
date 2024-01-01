@@ -37,7 +37,7 @@ library
       base >=4.7 && <5
     , mtl
     , parsec
-  default-language: Haskell2010
+  default-language: GHC2021
 
 executable scheme-in-haskell-exe
   main-is: Main.hs
@@ -51,7 +51,7 @@ executable scheme-in-haskell-exe
     , mtl
     , parsec
     , scheme-in-haskell
-  default-language: Haskell2010
+  default-language: GHC2021
 
 test-suite scheme-in-haskell-test
   type: exitcode-stdio-1.0
@@ -66,4 +66,4 @@ test-suite scheme-in-haskell-test
     , mtl
     , parsec
     , scheme-in-haskell
-  default-language: Haskell2010
+  default-language: GHC2021
