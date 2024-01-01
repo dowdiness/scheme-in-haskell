@@ -1,6 +1,7 @@
 module Repl where
 
 import           Core
+import           Evaluator
 import           Parser
 import           System.IO
 import           Variables

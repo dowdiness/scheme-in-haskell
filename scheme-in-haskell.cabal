@@ -26,6 +26,11 @@ source-repository head
 library
   exposed-modules:
       Core
+      Evaluator
+      Evaluator.IO
+      Evaluator.List
+      Evaluator.Numerical
+      Evaluator.String
       Parser
       Repl
       Variables
